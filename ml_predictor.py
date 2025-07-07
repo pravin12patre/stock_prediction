@@ -42,15 +42,23 @@ class StockPredictor:
         # Check which feature columns are available
         available_features = [col for col in self.feature_columns if col in data.columns]
         
+        print(f"Debug: Expected features: {self.feature_columns}")
+        print(f"Debug: Available features: {available_features}")
+        print(f"Debug: Missing features: {[col for col in self.feature_columns if col not in data.columns]}")
+        
         if len(available_features) < 2:  # Need at least 2 features for basic prediction
             print(f"Warning: Only {len(available_features)} features available. Need at least 2.")
             return False
             
         # Prepare targets first
         targets = self.prepare_targets(data)
+        print(f"Debug: Target columns created: {list(targets.keys())}")
         
         # Then prepare features and align them
         features = data[available_features]
+        
+        # Fill NaN values in features before alignment
+        features = features.fillna(method='ffill').fillna(method='bfill').fillna(0)
         
         # Align features and targets before dropping NaN
         aligned_data = pd.concat([features, pd.DataFrame(targets)], axis=1).dropna()

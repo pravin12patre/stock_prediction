@@ -275,6 +275,9 @@ with tab2:
         except Exception as e:
             st.error(f"Error in predictions: {str(e)}")
             st.info("Try selecting a different stock or data period.")
+    elif show_predictions and features_data is None:
+        st.warning(f"Insufficient data for ML predictions for {selected_ticker}. Try selecting a longer period or a different ticker.")
+        st.info("For newer stocks or indices, try 1mo, 3mo, or 6mo periods to see available data.")
     else:
         st.info("Enable predictions in the sidebar to see price forecasts.")
 
