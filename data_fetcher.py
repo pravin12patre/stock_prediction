@@ -1,7 +1,12 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+try:
+    import pandas_ta as ta
+except ImportError:
+    # Fallback for compatibility issues
+    print("Warning: pandas_ta not available, using basic technical indicators")
+    ta = None
 from textblob import TextBlob
 import requests
 from datetime import datetime, timedelta
@@ -60,43 +65,73 @@ class StockDataFetcher:
         data_length = len(df)
         
         # Moving averages - adjust length based on available data
-        if data_length >= 20:
-            df['SMA_20'] = ta.sma(df['Close'], length=20)
+        if ta is not None:
+            if data_length >= 20:
+                df['SMA_20'] = ta.sma(df['Close'], length=20)
+            else:
+                df['SMA_20'] = ta.sma(df['Close'], length=min(data_length-1, 5))
+                
+            if data_length >= 50:
+                df['SMA_50'] = ta.sma(df['Close'], length=50)
+            else:
+                df['SMA_50'] = ta.sma(df['Close'], length=min(data_length-1, 10))
+                
+            if data_length >= 12:
+                df['EMA_12'] = ta.ema(df['Close'], length=12)
+            else:
+                df['EMA_12'] = ta.ema(df['Close'], length=min(data_length-1, 3))
+                
+            if data_length >= 26:
+                df['EMA_26'] = ta.ema(df['Close'], length=26)
+            else:
+                df['EMA_26'] = ta.ema(df['Close'], length=min(data_length-1, 5))
         else:
-            df['SMA_20'] = ta.sma(df['Close'], length=min(data_length-1, 5))
-            
-        if data_length >= 50:
-            df['SMA_50'] = ta.sma(df['Close'], length=50)
-        else:
-            df['SMA_50'] = ta.sma(df['Close'], length=min(data_length-1, 10))
-            
-        if data_length >= 12:
-            df['EMA_12'] = ta.ema(df['Close'], length=12)
-        else:
-            df['EMA_12'] = ta.ema(df['Close'], length=min(data_length-1, 3))
-            
-        if data_length >= 26:
-            df['EMA_26'] = ta.ema(df['Close'], length=26)
-        else:
-            df['EMA_26'] = ta.ema(df['Close'], length=min(data_length-1, 5))
+            # Fallback calculations without pandas_ta
+            if data_length >= 20:
+                df['SMA_20'] = df['Close'].rolling(window=20).mean()
+            else:
+                df['SMA_20'] = df['Close'].rolling(window=min(data_length-1, 5)).mean()
+                
+            if data_length >= 50:
+                df['SMA_50'] = df['Close'].rolling(window=50).mean()
+            else:
+                df['SMA_50'] = df['Close'].rolling(window=min(data_length-1, 10)).mean()
+                
+            if data_length >= 12:
+                df['EMA_12'] = df['Close'].ewm(span=12).mean()
+            else:
+                df['EMA_12'] = df['Close'].ewm(span=min(data_length-1, 3)).mean()
+                
+            if data_length >= 26:
+                df['EMA_26'] = df['Close'].ewm(span=26).mean()
+            else:
+                df['EMA_26'] = df['Close'].ewm(span=min(data_length-1, 5)).mean()
         
         # MACD - only if we have enough data
         if data_length >= 26:
-            try:
-                macd = ta.macd(df['Close'])
-                if macd is not None:
-                    df = pd.concat([df, macd], axis=1)
-                else:
-                    # Create placeholder MACD columns if calculation fails
+            if ta is not None:
+                try:
+                    macd = ta.macd(df['Close'])
+                    if macd is not None:
+                        df = pd.concat([df, macd], axis=1)
+                    else:
+                        # Create placeholder MACD columns if calculation fails
+                        df['MACD_12_26_9'] = np.nan
+                        df['MACDh_12_26_9'] = np.nan
+                        df['MACDs_12_26_9'] = np.nan
+                except Exception as e:
+                    print(f"Error calculating MACD for {data_length} data points: {e}")
+                    # Create placeholder MACD columns
                     df['MACD_12_26_9'] = np.nan
                     df['MACDh_12_26_9'] = np.nan
                     df['MACDs_12_26_9'] = np.nan
-            except Exception as e:
-                print(f"Error calculating MACD for {data_length} data points: {e}")
-                # Create placeholder MACD columns
-                df['MACD_12_26_9'] = np.nan
-                df['MACDh_12_26_9'] = np.nan
-                df['MACDs_12_26_9'] = np.nan
+            else:
+                # Fallback MACD calculation
+                ema12 = df['Close'].ewm(span=12).mean()
+                ema26 = df['Close'].ewm(span=26).mean()
+                df['MACD_12_26_9'] = ema12 - ema26
+                df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9).mean()
+                df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
         else:
             # Create placeholder MACD columns
             df['MACD_12_26_9'] = np.nan
@@ -105,9 +140,25 @@ class StockDataFetcher:
         
         # RSI - adjust length based on available data
         if data_length >= 14:
-            df['RSI'] = ta.rsi(df['Close'], length=14)
+            if ta is not None:
+                df['RSI'] = ta.rsi(df['Close'], length=14)
+            else:
+                # Fallback RSI calculation
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                df['RSI'] = 100 - (100 / (1 + rs))
         else:
-            df['RSI'] = ta.rsi(df['Close'], length=min(data_length-1, 3))
+            if ta is not None:
+                df['RSI'] = ta.rsi(df['Close'], length=min(data_length-1, 3))
+            else:
+                # Fallback RSI calculation for short periods
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=min(data_length-1, 3)).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=min(data_length-1, 3)).mean()
+                rs = gain / loss
+                df['RSI'] = 100 - (100 / (1 + rs))
         
         # Bollinger Bands - adjust length based on available data
         if data_length >= 20:
@@ -160,15 +211,27 @@ class StockDataFetcher:
         
         # Volume indicators - adjust length based on available data
         if data_length >= 20:
-            df['Volume_SMA'] = ta.sma(df['Volume'], length=20)
+            if ta is not None:
+                df['Volume_SMA'] = ta.sma(df['Volume'], length=20)
+            else:
+                df['Volume_SMA'] = df['Volume'].rolling(window=20).mean()
         else:
-            df['Volume_SMA'] = ta.sma(df['Volume'], length=min(data_length-1, 3))
+            if ta is not None:
+                df['Volume_SMA'] = ta.sma(df['Volume'], length=min(data_length-1, 3))
+            else:
+                df['Volume_SMA'] = df['Volume'].rolling(window=min(data_length-1, 3)).mean()
         
         # Price momentum - adjust length based on available data
         if data_length >= 10:
-            df['ROC_10'] = ta.roc(df['Close'], length=10)
+            if ta is not None:
+                df['ROC_10'] = ta.roc(df['Close'], length=10)
+            else:
+                df['ROC_10'] = ((df['Close'] - df['Close'].shift(10)) / df['Close'].shift(10)) * 100
         else:
-            df['ROC_10'] = ta.roc(df['Close'], length=min(data_length-1, 2))
+            if ta is not None:
+                df['ROC_10'] = ta.roc(df['Close'], length=min(data_length-1, 2))
+            else:
+                df['ROC_10'] = ((df['Close'] - df['Close'].shift(min(data_length-1, 2))) / df['Close'].shift(min(data_length-1, 2))) * 100
         
         return df
     
