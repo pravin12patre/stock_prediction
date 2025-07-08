@@ -214,13 +214,24 @@ with tab2:
     st.subheader("Price Predictions")
     
     if show_predictions and features_data is not None:
+        st.write(f"Debug: features_data shape: {features_data.shape if features_data is not None else 'None'}")
+        st.write(f"Debug: predictor.models count: {len(predictor.models)}")
         try:
             # Train models if needed
             if not predictor.models:
-                with st.spinner("Training prediction models..."):
+                with st.spinner("Training advanced prediction models with hyperparameter tuning..."):
                     success = predictor.train_models(features_data)
                     if success:
-                        st.success(f"Models trained successfully! ({len(predictor.models)} models)")
+                        st.success(f"Advanced models trained successfully! ({len(predictor.models)} horizons)")
+                        
+                        # Show model performance summary
+                        st.subheader("Model Performance Summary")
+                        for horizon in ['1d', '5d', '20d']:
+                            if horizon in predictor.model_scores:
+                                scores = predictor.model_scores[horizon]
+                                st.write(f"**{horizon.upper()} Models:**")
+                                for model_name, mse in scores.items():
+                                    st.write(f"  - {model_name.replace('_', ' ').title()}: MSE = {mse:.6f}")
                     else:
                         st.warning("Could not train models due to insufficient data. Try selecting a longer time period or a different stock.")
                         st.info("For newer stocks or indices, try 1mo, 3mo, or 6mo periods to see available data.")
@@ -247,15 +258,79 @@ with tab2:
                                 st.metric(
                                     "Predicted Price",
                                     f"${pred_data['predicted_price']:.2f}",
-                                    f"{pred_data['predicted_change_pct']:+.2f}%"
+                                    f"{pred_data['predicted_change_pct']:+.2f}%",
+                                    delta_color="normal" if pred_data['predicted_change_pct'] >= 0 else "inverse"
                                 )
+                                
+                                # Show prediction uncertainty
+                                if 'prediction_std' in pred_data:
+                                    st.write(f"**Uncertainty:** {pred_data['prediction_std']:.4f}")
                                 
                                 # Confidence
                                 confidence = predictor.get_prediction_confidence(features_data, horizon)
                                 confidence_gauge = visualizer.create_confidence_gauge(confidence, f"{horizon.upper()} Confidence")
                                 st.plotly_chart(confidence_gauge, use_container_width=True)
                     
-                    # Prediction details table
+                    # Model performance details
+                    st.subheader("Model Performance Details")
+                    for horizon in ['1d', '5d', '20d']:
+                        if horizon in predictor.model_scores:
+                            with st.expander(f"{horizon.upper()} Model Performance"):
+                                scores = predictor.model_scores[horizon]
+                                
+                                # Create performance chart
+                                model_names = list(scores.keys())
+                                mse_values = list(scores.values())
+                                
+                                # Convert MSE to R² equivalent (simplified)
+                                r2_equivalent = [max(0, 1 - mse) for mse in mse_values]
+                                
+                                perf_df = pd.DataFrame({
+                                    'Model': model_names,
+                                    'MSE': mse_values,
+                                    'R² Equivalent': r2_equivalent
+                                })
+                                
+                                st.dataframe(perf_df, use_container_width=True)
+                                
+                                # Show best performing model
+                                best_model = min(scores.items(), key=lambda x: x[1])
+                                st.info(f"Best performing model: **{best_model[0].replace('_', ' ').title()}** (MSE: {best_model[1]:.6f})")
+                    
+                    # Feature importance analysis
+                    st.subheader("Feature Importance Analysis")
+                    for horizon in ['1d', '5d', '20d']:
+                        feature_importance = predictor.get_feature_importance(horizon)
+                        if feature_importance is not None:
+                            with st.expander(f"{horizon.upper()} Feature Importance"):
+                                # Show top 10 features
+                                top_features = feature_importance.head(10)
+                                
+                                # Create feature importance chart
+                                fig = go.Figure(data=[
+                                    go.Bar(
+                                        x=top_features.values,
+                                        y=top_features.index,
+                                        orientation='h',
+                                        marker_color='lightblue'
+                                    )
+                                ])
+                                
+                                fig.update_layout(
+                                    title=f"Top 10 Most Important Features for {horizon.upper()} Prediction",
+                                    xaxis_title="Importance Score",
+                                    yaxis_title="Features",
+                                    height=400
+                                )
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                                
+                                # Show feature list
+                                st.write("**Top Features:**")
+                                for i, (feature, importance) in enumerate(top_features.items(), 1):
+                                    st.write(f"{i}. {feature}: {importance:.4f}")
+                    
+                    # Prediction details table with uncertainty
                     st.subheader("Detailed Predictions")
                     pred_df = pd.DataFrame([
                         {
@@ -263,11 +338,24 @@ with tab2:
                             'Current Price': f"${pred_data['current_price']:.2f}",
                             'Predicted Price': f"${pred_data['predicted_price']:.2f}",
                             'Change': f"{pred_data['predicted_change_pct']:+.2f}%",
-                            'Direction': 'Bullish' if pred_data['predicted_change'] > 0 else 'Bearish'
+                            'Direction': 'Bullish' if pred_data['predicted_change'] > 0 else 'Bearish',
+                            'Uncertainty': f"{pred_data.get('prediction_std', 0):.4f}",
+                            'Confidence': f"{predictor.get_prediction_confidence(features_data, horizon):.2%}"
                         }
                         for horizon, pred_data in predictions.items()
                     ])
                     st.dataframe(pred_df, use_container_width=True)
+                    
+                    # Prediction accuracy disclaimer
+                    st.warning("""
+                    **Important Disclaimer:**
+                    - These predictions are based on historical data and technical analysis
+                    - Market conditions can change rapidly, affecting prediction accuracy
+                    - Always conduct your own research and consider multiple factors
+                    - Past performance does not guarantee future results
+                    - Use predictions as one of many tools in your investment strategy
+                    """)
+                    
                 else:
                     st.warning(f"Insufficient data for ML predictions for {selected_ticker}. Try selecting a longer period or a different ticker.")
             else:
@@ -276,9 +364,11 @@ with tab2:
             st.error(f"Error in predictions: {str(e)}")
             st.info("Try selecting a different stock or data period.")
     elif show_predictions and features_data is None:
+        st.write(f"Debug: features_data is None")
         st.warning(f"Insufficient data for ML predictions for {selected_ticker}. Try selecting a longer period or a different ticker.")
         st.info("For newer stocks or indices, try 1mo, 3mo, or 6mo periods to see available data.")
     else:
+        st.write(f"Debug: show_predictions={show_predictions}, features_data is None={features_data is None}")
         st.info("Enable predictions in the sidebar to see price forecasts.")
 
 with tab3:

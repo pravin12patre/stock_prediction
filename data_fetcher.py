@@ -233,6 +233,105 @@ class StockDataFetcher:
             else:
                 df['ROC_10'] = ((df['Close'] - df['Close'].shift(min(data_length-1, 2))) / df['Close'].shift(min(data_length-1, 2))) * 100
         
+        # Additional advanced indicators
+        if data_length >= 14:
+            try:
+                # Williams %R
+                if ta is not None:
+                    df['Williams_R'] = ta.willr(df['High'], df['Low'], df['Close'], length=14)
+                else:
+                    # Fallback Williams %R calculation
+                    highest_high = df['High'].rolling(window=14).max()
+                    lowest_low = df['Low'].rolling(window=14).min()
+                    df['Williams_R'] = -100 * (highest_high - df['Close']) / (highest_high - lowest_low)
+                
+                # CCI (Commodity Channel Index)
+                if ta is not None:
+                    df['CCI'] = ta.cci(df['High'], df['Low'], df['Close'], length=20)
+                else:
+                    # Fallback CCI calculation
+                    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+                    sma_tp = typical_price.rolling(window=20).mean()
+                    mad = typical_price.rolling(window=20).apply(lambda x: np.mean(np.abs(x - x.mean())))
+                    df['CCI'] = (typical_price - sma_tp) / (0.015 * mad)
+                
+                # ADX (Average Directional Index)
+                if ta is not None:
+                    try:
+                        adx_data = ta.adx(df['High'], df['Low'], df['Close'], length=14)
+                        if adx_data is not None and isinstance(adx_data, pd.DataFrame):
+                            df['ADX'] = adx_data.iloc[:, 0]  # Take the first column (ADX)
+                        else:
+                            df['ADX'] = np.nan
+                    except:
+                        df['ADX'] = np.nan
+                else:
+                    # Simplified ADX calculation
+                    df['ADX'] = np.nan  # Complex calculation, skip for now
+                
+                # ATR (Average True Range)
+                if ta is not None:
+                    df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+                else:
+                    # Fallback ATR calculation
+                    high_low = df['High'] - df['Low']
+                    high_close = np.abs(df['High'] - df['Close'].shift())
+                    low_close = np.abs(df['Low'] - df['Close'].shift())
+                    true_range = np.maximum(high_low, np.maximum(high_close, low_close))
+                    df['ATR'] = true_range.rolling(window=14).mean()
+                
+                # Money Flow Index
+                if ta is not None:
+                    df['Money_Flow_Index'] = ta.mfi(df['High'], df['Low'], df['Close'], df['Volume'], length=14)
+                else:
+                    # Fallback MFI calculation
+                    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+                    money_flow = typical_price * df['Volume']
+                    
+                    positive_flow = money_flow.where(typical_price > typical_price.shift(1), 0).rolling(window=14).sum()
+                    negative_flow = money_flow.where(typical_price < typical_price.shift(1), 0).rolling(window=14).sum()
+                    
+                    money_ratio = positive_flow / negative_flow
+                    df['Money_Flow_Index'] = 100 - (100 / (1 + money_ratio))
+                
+                # Force Index
+                if ta is not None:
+                    df['Force_Index'] = ta.fi(df['Close'], df['Volume'], length=13)
+                else:
+                    # Fallback Force Index calculation
+                    df['Force_Index'] = (df['Close'] - df['Close'].shift(1)) * df['Volume']
+                    df['Force_Index'] = df['Force_Index'].rolling(window=13).mean()
+                
+                # EOM (Ease of Movement)
+                if ta is not None:
+                    df['EOM'] = ta.eom(df['High'], df['Low'], df['Volume'], length=14)
+                else:
+                    # Fallback EOM calculation
+                    distance_moved = (df['High'] + df['Low']) / 2 - (df['High'].shift(1) + df['Low'].shift(1)) / 2
+                    box_ratio = df['Volume'] / (df['High'] - df['Low'])
+                    df['EOM'] = distance_moved / box_ratio
+                    df['EOM'] = df['EOM'].rolling(window=14).mean()
+                    
+            except Exception as e:
+                print(f"Error calculating advanced indicators: {e}")
+                # Create placeholder columns
+                df['Williams_R'] = np.nan
+                df['CCI'] = np.nan
+                df['ADX'] = np.nan
+                df['ATR'] = np.nan
+                df['Money_Flow_Index'] = np.nan
+                df['Force_Index'] = np.nan
+                df['EOM'] = np.nan
+        else:
+            # Create placeholder columns for short periods
+            df['Williams_R'] = np.nan
+            df['CCI'] = np.nan
+            df['ADX'] = np.nan
+            df['ATR'] = np.nan
+            df['Money_Flow_Index'] = np.nan
+            df['Force_Index'] = np.nan
+            df['EOM'] = np.nan
+        
         return df
     
     def get_news_sentiment(self, ticker, days=7):
@@ -324,6 +423,7 @@ class StockDataFetcher:
         df['Price_Change'] = df['Close'].pct_change()
         df['Price_Change_5d'] = df['Close'].pct_change(5)
         df['Price_Change_20d'] = df['Close'].pct_change(20)
+        df['Price_Change_60d'] = df['Close'].pct_change(60)
         
         # Volume features
         df['Volume_Change'] = df['Volume'].pct_change()
@@ -354,17 +454,25 @@ class StockDataFetcher:
         else:
             df['BB_Position'] = np.nan
         
-        # Remove NaN values but be more lenient for short periods
-        # For very short periods, fill NaN with forward fill and then drop remaining NaN
-        if len(df) < 20:
-            # Fill NaN values with forward fill for short periods
-            df = df.fillna(method='ffill').fillna(method='bfill')
-            # If still have NaN, fill with 0 for numeric columns
-            numeric_columns = df.select_dtypes(include=[np.number]).columns
-            df[numeric_columns] = df[numeric_columns].fillna(0)
-        else:
-            # For longer periods, drop NaN rows
-            df = df.dropna()
+        # Improved NaN handling - be more lenient
+        print(f"Data shape before NaN handling: {df.shape}")
+        print(f"NaN count before handling: {df.isnull().sum().sum()}")
+        
+        # First, fill NaN values with forward fill and backward fill
+        df = df.fillna(method='ffill').fillna(method='bfill')
+        
+        # For remaining NaN values in numeric columns, fill with 0
+        numeric_columns = df.select_dtypes(include=[np.number]).columns
+        df[numeric_columns] = df[numeric_columns].fillna(0)
+        
+        # For categorical columns, fill with mode or default value
+        categorical_columns = df.select_dtypes(include=['object', 'category']).columns
+        for col in categorical_columns:
+            if col in df.columns:
+                df[col] = df[col].fillna(df[col].mode()[0] if len(df[col].mode()) > 0 else 'Unknown')
+        
+        print(f"Data shape after NaN handling: {df.shape}")
+        print(f"NaN count after handling: {df.isnull().sum().sum()}")
         
         # Final check - if still no data, return None
         if df.empty:
