@@ -295,31 +295,42 @@ with tab2:
                     st.subheader("Detailed Predictions")
                     
                     try:
-                        # Sort predictions by horizon days
-                        sorted_predictions = []
-                        for horizon, pred_data in predictions.items():
-                            if isinstance(pred_data, dict) and 'horizon_days' in pred_data:
-                                sorted_predictions.append((horizon, pred_data))
-                        
-                        # Sort by horizon days
-                        sorted_predictions.sort(key=lambda x: x[1]['horizon_days'])
-                        
-                        if sorted_predictions:
-                            pred_df = pd.DataFrame([
-                                {
-                                    'Horizon': horizon,
-                                    'Current Price': f"${pred_data['current_price']:.2f}",
-                                    'Predicted Price': f"${pred_data['predicted_price']:.2f}",
-                                    'Change': f"{pred_data['predicted_change_pct']:+.2f}%",
-                                    'Direction': 'Bullish' if pred_data['predicted_change'] > 0 else 'Bearish',
-                                    'Uncertainty': f"{pred_data.get('prediction_std', 0):.4f}",
-                                    'Confidence': f"{predictor.get_prediction_confidence(advanced_features_data, horizon):.2%}"
-                                }
-                                for horizon, pred_data in sorted_predictions
-                            ])
-                            st.dataframe(pred_df, use_container_width=True)
+                        # Create prediction table from the predictions dictionary
+                        if predictions:
+                            pred_rows = []
+                            for horizon, pred_data in predictions.items():
+                                if isinstance(pred_data, dict):
+                                    # Extract values from prediction data
+                                    predicted_price = pred_data.get('predicted_price', 0)
+                                    current_price = pred_data.get('current_price', 0)
+                                    predicted_change_pct = pred_data.get('predicted_change_pct', 0)
+                                    
+                                    # Calculate direction
+                                    direction = 'Bullish' if predicted_change_pct > 0 else 'Bearish'
+                                    
+                                    # Get confidence if available
+                                    try:
+                                        confidence = predictor.get_prediction_confidence(advanced_features_data, horizon)
+                                        confidence_str = f"{confidence:.2%}"
+                                    except:
+                                        confidence_str = "N/A"
+                                    
+                                    pred_rows.append({
+                                        'Horizon': horizon,
+                                        'Current Price': f"${current_price:.2f}",
+                                        'Predicted Price': f"${predicted_price:.2f}",
+                                        'Change': f"{predicted_change_pct:+.2f}%",
+                                        'Direction': direction,
+                                        'Confidence': confidence_str
+                                    })
+                            
+                            if pred_rows:
+                                pred_df = pd.DataFrame(pred_rows)
+                                st.dataframe(pred_df, use_container_width=True)
+                            else:
+                                st.write("No valid predictions to display in table")
                         else:
-                            st.write("No valid predictions to display in table")
+                            st.write("No predictions generated")
                     except Exception as e:
                         st.write(f"Error creating prediction table: {e}")
                         st.write(f"Predictions structure: {predictions}")

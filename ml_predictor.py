@@ -80,6 +80,14 @@ class StockPredictor:
         df['Volume_Price_Trend'] = (df['Close'] - df['Close'].shift(1)) * df['Volume']
         df['On_Balance_Volume'] = (df['Volume'] * np.sign(df['Close'] - df['Close'].shift(1))).cumsum()
         
+        # Ensure Volume_Ratio is always present (fallback calculation)
+        if 'Volume_Ratio' not in df.columns:
+            # Calculate Volume_Ratio as current volume / average volume
+            df['Volume_Ratio'] = df['Volume'] / df['Volume'].rolling(window=20).mean()
+        # If Volume_Ratio exists but has NaN values, fill them
+        if 'Volume_Ratio' in df.columns:
+            df['Volume_Ratio'] = df['Volume_Ratio'].fillna(1.0)  # Default to 1.0 if no volume data
+        
         # Enhanced moving average ratios
         if 'SMA_20' in df.columns and 'SMA_50' in df.columns:
             df['SMA_20_50_Ratio'] = df['SMA_20'] / df['SMA_50']
@@ -390,21 +398,29 @@ class StockPredictor:
         # Calculate advanced features
         data = self.calculate_advanced_features(data)
         
-        # Get latest features
+        # Get latest features with better error handling
         available_features = [col for col in self.feature_columns if col in data.columns]
-        latest_features = data[available_features].iloc[-1:].dropna()
         
-        if latest_features.empty:
-            return {}
+        # Use the last row without dropping NaN first
+        latest_features = data[available_features].iloc[-1:].copy()
+        
+        # Fill NaN values before any operations
+        latest_features = latest_features.fillna(method='ffill').fillna(method='bfill').fillna(0)
         
         # Handle categorical features
         categorical_features = ['Market_Regime', 'Volatility_Regime', 'Trend_Regime', 'Volume_Regime']
         for cat_feature in categorical_features:
             if cat_feature in latest_features.columns:
-                latest_features[cat_feature] = pd.Categorical(latest_features[cat_feature]).codes
+                # Convert to numeric safely
+                try:
+                    latest_features[cat_feature] = pd.Categorical(latest_features[cat_feature]).codes
+                except:
+                    latest_features[cat_feature] = 0
         
-        # Fill NaN values
-        latest_features = latest_features.fillna(method='ffill').fillna(method='bfill').fillna(0)
+        # Ensure we have at least some features
+        if latest_features.empty or latest_features.isnull().all().all():
+            print("Warning: No valid features available for prediction")
+            return {}
         
         for horizon in horizons:
             if f'{horizon}d' not in self.models:
@@ -413,12 +429,33 @@ class StockPredictor:
             # Use best features for this horizon
             if f'{horizon}d' in self.best_features:
                 selected_features = self.best_features[f'{horizon}d']
-                features_subset = latest_features[selected_features]
+                # Only use features that are actually available
+                available_selected = [f for f in selected_features if f in latest_features.columns]
+                if available_selected:
+                    features_subset = latest_features[available_selected]
+                else:
+                    print(f"Warning: No selected features available for {horizon}d prediction")
+                    continue
             else:
                 features_subset = latest_features
             
+            # Ensure we have the right number of features for scaling
+            if features_subset.shape[1] != self.scalers[f'{horizon}d'].n_features_in_:
+                print(f"Warning: Feature mismatch for {horizon}d. Expected {self.scalers[f'{horizon}d'].n_features_in_}, got {features_subset.shape[1]}")
+                # Try to match the expected features
+                expected_features = self.scalers[f'{horizon}d'].feature_names_in_ if hasattr(self.scalers[f'{horizon}d'], 'feature_names_in_') else None
+                if expected_features is not None:
+                    missing_features = set(expected_features) - set(features_subset.columns)
+                    for feature in missing_features:
+                        features_subset[feature] = 0
+                    features_subset = features_subset[expected_features]
+            
             # Scale features
-            scaled_features = self.scalers[f'{horizon}d'].transform(features_subset)
+            try:
+                scaled_features = self.scalers[f'{horizon}d'].transform(features_subset)
+            except Exception as e:
+                print(f"Error scaling features for {horizon}d: {e}")
+                continue
             
             # Make predictions with all models
             model_predictions = []
