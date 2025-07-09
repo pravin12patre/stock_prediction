@@ -72,7 +72,6 @@ period = st.sidebar.selectbox(
 # Analysis options
 st.sidebar.markdown("### Analysis Options")
 show_technical_indicators = st.sidebar.checkbox("Show Technical Indicators", value=True)
-show_sentiment = st.sidebar.checkbox("Show Sentiment Analysis", value=True)
 show_predictions = st.sidebar.checkbox("Show Predictions", value=True)
 
 # Help text for shorter periods
@@ -195,7 +194,7 @@ with col4:
         )
 
 # Create tabs
-tab1, tab2, tab3, tab4 = st.tabs(["Price Chart", "Predictions", "Technical Analysis", "Sentiment"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Price Chart", "Advanced Technical Analysis", "Predictions", "Volume Profile", "Momentum Analysis"])
 
 with tab1:
     st.subheader("Price Chart with Technical Indicators")
@@ -211,6 +210,74 @@ with tab1:
         st.error("Could not create price chart")
 
 with tab2:
+    st.subheader("Advanced Technical Analysis")
+    
+    # Detect chart patterns
+    patterns = data_fetcher.detect_chart_patterns(data_with_indicators)
+    
+    # Display pattern information
+    if patterns:
+        st.write("**Detected Chart Patterns:**")
+        pattern_cols = st.columns(3)
+        pattern_count = 0
+        
+        for pattern_name, pattern_data in patterns.items():
+            if pattern_data and pattern_data.get('confidence', 0) > 0.5:
+                with pattern_cols[pattern_count % 3]:
+                    st.info(f"**{pattern_data['pattern']}**\n"
+                           f"Confidence: {pattern_data['confidence']:.1%}\n"
+                           f"Breakout Level: ${pattern_data.get('breakout_level', 'N/A'):.2f}")
+                pattern_count += 1
+    
+    # Advanced technical chart
+    advanced_chart = visualizer.create_advanced_technical_chart(data_with_indicators, selected_ticker, patterns)
+    if advanced_chart:
+        st.plotly_chart(advanced_chart, use_container_width=True)
+    
+    # Technical analysis summary
+    st.subheader("Technical Analysis Summary")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**Trend Analysis:**")
+        if 'SMA_20' in data_with_indicators.columns and 'SMA_50' in data_with_indicators.columns:
+            sma20 = data_with_indicators['SMA_20'].iloc[-1]
+            sma50 = data_with_indicators['SMA_50'].iloc[-1]
+            current_price = data_with_indicators['Close'].iloc[-1]
+            
+            if current_price > sma20 > sma50:
+                st.success("Strong Uptrend")
+            elif current_price > sma20 and sma20 < sma50:
+                st.warning("Weak Uptrend")
+            elif current_price < sma20 < sma50:
+                st.error("Strong Downtrend")
+            else:
+                st.info("Mixed Signals")
+    
+    with col2:
+        st.write("**Momentum Analysis:**")
+        if 'RSI' in data_with_indicators.columns:
+            rsi = data_with_indicators['RSI'].iloc[-1]
+            if rsi > 70:
+                st.error("Overbought")
+            elif rsi < 30:
+                st.success("Oversold")
+            else:
+                st.info("Neutral")
+    
+    with col3:
+        st.write("**Volume Analysis:**")
+        if 'OBV' in data_with_indicators.columns:
+            obv_trend = data_with_indicators['OBV'].iloc[-5:].pct_change().mean()
+            if obv_trend > 0.01:
+                st.success("Increasing Volume")
+            elif obv_trend < -0.01:
+                st.error("Decreasing Volume")
+            else:
+                st.info("Stable Volume")
+
+with tab3:
     st.subheader("Price Predictions")
     
     if show_predictions and features_data is not None:
@@ -295,55 +362,245 @@ with tab2:
                     st.subheader("Detailed Predictions")
                     
                     try:
-                        # Create prediction table from the predictions dictionary
+                        # Create prediction table with confidence and sentiment
                         if predictions:
-                            pred_rows = []
-                            for horizon, pred_data in predictions.items():
-                                if isinstance(pred_data, dict):
-                                    # Extract values from prediction data
-                                    predicted_price = pred_data.get('predicted_price', 0)
-                                    current_price = pred_data.get('current_price', 0)
-                                    predicted_change_pct = pred_data.get('predicted_change_pct', 0)
-                                    
-                                    # Calculate direction
-                                    direction = 'Bullish' if predicted_change_pct > 0 else 'Bearish'
-                                    
-                                    # Get confidence if available
+                            pred_data = []
+                            for horizon, pred_info in predictions.items():
+                                if isinstance(pred_info, dict):
+                                    # Calculate confidence for this prediction
                                     try:
                                         confidence = predictor.get_prediction_confidence(advanced_features_data, horizon)
-                                        confidence_str = f"{confidence:.2%}"
                                     except:
-                                        confidence_str = "N/A"
+                                        confidence = 0.5
                                     
-                                    pred_rows.append({
+                                    # Determine sentiment based on predicted change with more stable thresholds
+                                    predicted_change = pred_info.get('predicted_change', 0)
+                                    predicted_change_pct = pred_info.get('predicted_change_pct', 0)
+                                    
+                                    # Use percentage change for more intuitive sentiment determination
+                                    # More conservative thresholds to reduce false signals
+                                    if predicted_change_pct > 3.0:  # >3% change
+                                        sentiment = "🟢 Bullish"
+                                    elif predicted_change_pct < -3.0:  # < -3% change
+                                        sentiment = "🔴 Bearish"
+                                    elif predicted_change_pct > 1.0:  # 1-3% change
+                                        sentiment = "🟢 Slightly Bullish"
+                                    elif predicted_change_pct < -1.0:  # -3% to -1% change
+                                        sentiment = "🔴 Slightly Bearish"
+                                    else:
+                                        sentiment = "🟡 Neutral"
+                                    
+                                    # Add confidence indicator to sentiment
+                                    if confidence > 0.7:
+                                        sentiment += " (High Confidence)"
+                                    elif confidence < 0.4:
+                                        sentiment += " (Low Confidence)"
+                                    
+                                    pred_data.append({
                                         'Horizon': horizon,
-                                        'Current Price': f"${current_price:.2f}",
-                                        'Predicted Price': f"${predicted_price:.2f}",
-                                        'Change': f"{predicted_change_pct:+.2f}%",
-                                        'Direction': direction,
-                                        'Confidence': confidence_str
+                                        'Predicted Price': f"${pred_info.get('predicted_price', 0):.2f}",
+                                        'Predicted Change': f"{pred_info.get('predicted_change', 0):.4f}",
+                                        'Change %': f"{pred_info.get('predicted_change_pct', 0):.2f}%",
+                                        'Sentiment': sentiment,
+                                        'Confidence': f"{confidence:.1%}"
                                     })
+                        
+                        if pred_data:
+                            pred_df = pd.DataFrame(pred_data)
+                            st.dataframe(pred_df, use_container_width=True)
                             
-                            if pred_rows:
-                                pred_df = pd.DataFrame(pred_rows)
-                                st.dataframe(pred_df, use_container_width=True)
-                            else:
-                                st.write("No valid predictions to display in table")
+                            # Add explanation of sentiment
+                            st.info("**Sentiment Guide:** 🟢 Bullish (>3% rise), 🟢 Slightly Bullish (1-3% rise), 🟡 Neutral (-1% to 1%), 🔴 Slightly Bearish (-3% to -1% fall), 🔴 Bearish (>3% fall)")
+                            
+                            # Add prediction stability information
+                            st.subheader("Prediction Stability Analysis")
+                            stability_info = []
+                            
+                            for horizon, pred_info in predictions.items():
+                                if isinstance(pred_info, dict):
+                                    model_predictions = pred_info.get('model_predictions', [])
+                                    prediction_std = pred_info.get('prediction_std', 0)
+                                    model_weights = pred_info.get('model_weights', [])
+                                    bounds_applied = pred_info.get('prediction_bounds_applied', False)
+                                    
+                                    if model_predictions:
+                                        # Calculate model agreement
+                                        agreement_score = 1.0 - min(1.0, prediction_std / 0.1)
+                                        
+                                        stability_info.append({
+                                            'Horizon': horizon,
+                                            'Model Agreement': f"{agreement_score:.1%}",
+                                            'Prediction Uncertainty': f"{prediction_std:.4f}",
+                                            'Models Used': len(model_predictions),
+                                            'Bounds Applied': "Yes" if bounds_applied else "No"
+                                        })
+                            
+                            if stability_info:
+                                stability_df = pd.DataFrame(stability_info)
+                                st.dataframe(stability_df, use_container_width=True)
+                                
+                                # Add stability explanation
+                                st.info("""
+                                **Stability Metrics:**
+                                - **Model Agreement**: Higher percentage means models agree more
+                                - **Prediction Uncertainty**: Lower values indicate more confident predictions
+                                - **Bounds Applied**: Shows if extreme predictions were capped for stability
+                                """)
                         else:
-                            st.write("No predictions generated")
+                            st.warning("No valid predictions to display in table")
                     except Exception as e:
-                        st.write(f"Error creating prediction table: {e}")
-                        st.write(f"Predictions structure: {predictions}")
+                        st.error(f"Error displaying predictions: {e}")
                     
-                    # Prediction accuracy disclaimer
-                    st.warning("""
-                    **Important Disclaimer:**
-                    - These predictions are based on historical data and technical analysis
-                    - Market conditions can change rapidly, affecting prediction accuracy
-                    - Always conduct your own research and consider multiple factors
-                    - Past performance does not guarantee future results
-                    - Use predictions as one of many tools in your investment strategy
-                    """)
+                    # NEW: Model Validation Section
+                    st.subheader("Model Validation & Accuracy Testing")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("Run Model Validation", type="primary"):
+                            with st.spinner("Running comprehensive model validation..."):
+                                try:
+                                    # Run validation for different horizons
+                                    validation_results = {}
+                                    for horizon in [1, 5, 20]:
+                                        horizon_str = f'{horizon}d'
+                                        results = predictor.validate_model(raw_data, horizon_str)
+                                        if results:
+                                            validation_results[horizon_str] = results
+                                    
+                                    if validation_results:
+                                        st.success("Model validation completed!")
+                                        
+                                        # Display validation summary
+                                        st.write("### Validation Summary")
+                                        for horizon, results in validation_results.items():
+                                            if results:
+                                                best_model = max(results.keys(), key=lambda x: results[x]['R2'])
+                                                best_r2 = results[best_model]['R2']
+                                                best_direction = results[best_model]['Directional_Accuracy']
+                                                
+                                                st.write(f"**{horizon} Horizon:**")
+                                                st.write(f"- Best Model: {best_model}")
+                                                st.write(f"- R² Score: {best_r2:.4f}")
+                                                st.write(f"- Directional Accuracy: {best_direction:.4f}")
+                                    else:
+                                        st.warning("No validation results generated")
+                                        
+                                except Exception as e:
+                                    st.error(f"Error during validation: {e}")
+                    
+                    with col2:
+                        if st.button("Run Backtesting"):
+                            with st.spinner("Running backtesting simulation..."):
+                                try:
+                                    # Run backtesting for different horizons
+                                    backtest_results = {}
+                                    for horizon in [1, 5, 20]:
+                                        horizon_str = f'{horizon}d'
+                                        results = predictor.backtest_model(raw_data, horizon_str)
+                                        if results:
+                                            backtest_results[horizon_str] = results
+                                    
+                                    if backtest_results:
+                                        st.success("Backtesting completed!")
+                                        
+                                        # Display backtest summary
+                                        st.write("### Backtest Summary")
+                                        for horizon, results in backtest_results.items():
+                                            st.write(f"**{horizon} Horizon:**")
+                                            st.write(f"- Total Return: {results['Total_Return']:.4f}")
+                                            st.write(f"- Sharpe Ratio: {results['Sharpe_Ratio']:.4f}")
+                                            st.write(f"- Win Rate: {results['Win_Rate']:.4f}")
+                                            st.write(f"- Max Drawdown: {results['Max_Drawdown']:.4f}")
+                                    else:
+                                        st.warning("No backtest results generated")
+                                        
+                                except Exception as e:
+                                    st.error(f"Error during backtesting: {e}")
+                    
+                    with col3:
+                        if st.button("Generate Full Report"):
+                            with st.spinner("Generating comprehensive accuracy report..."):
+                                try:
+                                    # Generate full accuracy report
+                                    accuracy_report = predictor.generate_accuracy_report(raw_data, [1, 5, 20])
+                                    st.success("Accuracy report generated!")
+                                    
+                                    # Display key insights
+                                    st.write("### Key Insights")
+                                    if accuracy_report:
+                                        for horizon, results in accuracy_report.items():
+                                            validation = results.get('validation', {})
+                                            backtest = results.get('backtest', {})
+                                            
+                                            if validation:
+                                                best_model = max(validation.keys(), key=lambda x: validation[x]['R2'])
+                                                st.write(f"**{horizon}:** Best model is {best_model}")
+                                            
+                                            if backtest:
+                                                if backtest['Excess_Return'] > 0:
+                                                    st.write(f"**{horizon}:** Strategy outperforms buy & hold")
+                                                else:
+                                                    st.write(f"**{horizon}:** Buy & hold outperforms strategy")
+                                
+                                except Exception as e:
+                                    st.error(f"Error generating report: {e}")
+                    
+                    # Display detailed validation results if available
+                    if hasattr(predictor, 'validation_results') and predictor.validation_results:
+                        st.write("### Detailed Validation Results")
+                        
+                        # Create tabs for different horizons
+                        horizon_tabs = st.tabs(list(predictor.validation_results.keys()))
+                        
+                        for i, (horizon, results) in enumerate(predictor.validation_results.items()):
+                            with horizon_tabs[i]:
+                                if results:
+                                    # Create metrics display
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.write("**Model Performance Metrics**")
+                                        for model_name, metrics in results.items():
+                                            st.write(f"**{model_name}:**")
+                                            st.write(f"- R²: {metrics['R2']:.4f}")
+                                            st.write(f"- Directional Accuracy: {metrics['Directional_Accuracy']:.4f}")
+                                            st.write(f"- Strategy Sharpe: {metrics['Strategy_Sharpe']:.4f}")
+                                    
+                                    with col2:
+                                        st.write("**Trading Performance**")
+                                        for model_name, metrics in results.items():
+                                            st.write(f"**{model_name}:**")
+                                            st.write(f"- Strategy Return: {metrics['Strategy_Total_Return']:.4f}")
+                                            st.write(f"- Buy & Hold Return: {metrics['Buy_Hold_Total_Return']:.4f}")
+                                            st.write(f"- Outperformance: {metrics['Outperformance']:.4f}")
+                    
+                    # Display backtest results if available
+                    if hasattr(predictor, 'backtest_results') and predictor.backtest_results:
+                        st.write("### Backtest Results")
+                        
+                        # Create tabs for different horizons
+                        backtest_tabs = st.tabs(list(predictor.backtest_results.keys()))
+                        
+                        for i, (horizon, results) in enumerate(predictor.backtest_results.items()):
+                            with backtest_tabs[i]:
+                                if results:
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.write("**Performance Metrics**")
+                                        st.metric("Total Return", f"{results['Total_Return']:.4f}")
+                                        st.metric("Buy & Hold Return", f"{results['Buy_Hold_Return']:.4f}")
+                                        st.metric("Excess Return", f"{results['Excess_Return']:.4f}")
+                                    
+                                    with col2:
+                                        st.write("**Risk Metrics**")
+                                        st.metric("Sharpe Ratio", f"{results['Sharpe_Ratio']:.4f}")
+                                        st.metric("Max Drawdown", f"{results['Max_Drawdown']:.4f}")
+                                        st.metric("Win Rate", f"{results['Win_Rate']:.4f}")
+                                    
+                                    st.write(f"**Trading Summary:** {results['Number_of_Trades']} trades executed")
+                                    st.write(f"**Final Portfolio Value:** ${results['Final_Portfolio_Value']:.2f}")
                     
                 else:
                     st.warning(f"Could not generate predictions for {selected_ticker}. This might be due to insufficient recent data.")
@@ -434,53 +691,113 @@ with tab3:
             else:
                 st.info("Price within bands - normal range")
 
+
+
+
+
 with tab4:
-    st.subheader("Sentiment Analysis")
+    st.subheader("Volume Profile Analysis")
     
-    if show_sentiment:
-        # Get sentiment data
-        news_sentiment = data_fetcher.get_news_sentiment(selected_ticker)
-        social_sentiment = data_fetcher.get_social_sentiment(selected_ticker)
+    # Volume profile chart
+    volume_profile_chart = visualizer.create_volume_profile_chart(data_with_indicators, selected_ticker)
+    if volume_profile_chart:
+        st.plotly_chart(volume_profile_chart, use_container_width=True)
+    
+    # Volume analysis metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**Volume Metrics:**")
+        if 'Volume' in data_with_indicators.columns:
+            avg_volume = data_with_indicators['Volume'].mean()
+            current_volume = data_with_indicators['Volume'].iloc[-1]
+            volume_ratio = current_volume / avg_volume
+            
+            st.metric("Current Volume", f"{current_volume:,.0f}")
+            st.metric("Avg Volume", f"{avg_volume:,.0f}")
+            st.metric("Volume Ratio", f"{volume_ratio:.2f}x")
+    
+    with col2:
+        st.write("**Volume Indicators:**")
+        if 'OBV' in data_with_indicators.columns:
+            obv = data_with_indicators['OBV'].iloc[-1]
+            obv_change = data_with_indicators['OBV'].iloc[-1] - data_with_indicators['OBV'].iloc[-5]
+            st.metric("OBV", f"{obv:,.0f}")
+            st.metric("OBV Change (5d)", f"{obv_change:+,.0f}")
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### News Sentiment")
-            st.metric(
-                "Sentiment Score",
-                f"{news_sentiment['sentiment_score']:.3f}",
-                news_sentiment['sentiment_label']
-            )
-            st.metric("Articles Analyzed", news_sentiment['articles_count'])
-        
-        with col2:
-            st.markdown("### Social Media Sentiment")
-            st.metric(
-                "Sentiment Score",
-                f"{social_sentiment['sentiment_score']:.3f}",
-                social_sentiment['sentiment_label']
-            )
-            st.metric("Mentions", social_sentiment['mentions_count'])
-        
-        # Sentiment chart
-        sentiment_chart = visualizer.create_sentiment_chart(news_sentiment, social_sentiment)
-        if sentiment_chart:
-            st.plotly_chart(sentiment_chart, use_container_width=True)
-        
-        # Overall sentiment
-        overall_sentiment = (news_sentiment['sentiment_score'] + social_sentiment['sentiment_score']) / 2
-        
-        st.markdown("### Overall Sentiment")
-        if overall_sentiment > 0.2:
-            st.success("Positive sentiment - Bullish signal")
-        elif overall_sentiment < -0.2:
-            st.error("Negative sentiment - Bearish signal")
-        else:
-            st.info("Neutral sentiment - No clear signal")
-    else:
-        st.info("Enable sentiment analysis in the sidebar to see sentiment data.")
+        if 'CMF' in data_with_indicators.columns:
+            cmf = data_with_indicators['CMF'].iloc[-1]
+            st.metric("CMF", f"{cmf:.3f}")
+    
+    with col3:
+        st.write("**Volume Analysis:**")
+        if 'Volume' in data_with_indicators.columns:
+            # Volume trend analysis
+            recent_volume = data_with_indicators['Volume'].tail(10).mean()
+            older_volume = data_with_indicators['Volume'].tail(30).head(20).mean()
+            
+            if recent_volume > older_volume * 1.2:
+                st.success("Increasing Volume Trend")
+            elif recent_volume < older_volume * 0.8:
+                st.error("Decreasing Volume Trend")
+            else:
+                st.info("Stable Volume Trend")
 
-
+with tab5:
+    st.subheader("Momentum Analysis")
+    
+    # Momentum analysis chart
+    momentum_chart = visualizer.create_momentum_analysis_chart(data_with_indicators, selected_ticker)
+    if momentum_chart:
+        st.plotly_chart(momentum_chart, use_container_width=True)
+    
+    # Advanced momentum indicators
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("**Momentum Oscillators:**")
+        if 'RSI' in data_with_indicators.columns:
+            rsi = data_with_indicators['RSI'].iloc[-1]
+            st.metric("RSI", f"{rsi:.1f}")
+            
+        if 'MFI' in data_with_indicators.columns:
+            mfi = data_with_indicators['MFI'].iloc[-1]
+            st.metric("MFI", f"{mfi:.1f}")
+            
+        if 'Ultimate_Oscillator' in data_with_indicators.columns:
+            uo = data_with_indicators['Ultimate_Oscillator'].iloc[-1]
+            st.metric("Ultimate Osc", f"{uo:.1f}")
+    
+    with col2:
+        st.write("**Trend Strength:**")
+        if 'ADX' in data_with_indicators.columns:
+            adx = data_with_indicators['ADX'].iloc[-1]
+            st.metric("ADX", f"{adx:.1f}")
+            
+            if adx > 25:
+                st.success("Strong Trend")
+            elif adx > 20:
+                st.warning("Moderate Trend")
+            else:
+                st.info("Weak Trend")
+        
+        if 'TSI' in data_with_indicators.columns:
+            tsi = data_with_indicators['TSI'].iloc[-1]
+            st.metric("TSI", f"{tsi:.3f}")
+    
+    with col3:
+        st.write("**Price Momentum:**")
+        if 'ROC_10' in data_with_indicators.columns:
+            roc = data_with_indicators['ROC_10'].iloc[-1]
+            st.metric("ROC (10)", f"{roc:.2f}%")
+            
+        if 'Momentum' in data_with_indicators.columns:
+            momentum = data_with_indicators['Momentum'].iloc[-1]
+            st.metric("Momentum", f"{momentum:.2f}")
+            
+        if 'PROC' in data_with_indicators.columns:
+            proc = data_with_indicators['PROC'].iloc[-1]
+            st.metric("PROC", f"{proc:.2f}%")
 
 # Footer
 st.markdown("---")
