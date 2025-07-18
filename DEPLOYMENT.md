@@ -1,4 +1,4 @@
-# 🚀 Deployment Guide
+# Deployment Guide
 
 This guide covers how to deploy the Stock Prediction Dashboard locally and to the cloud.
 
@@ -53,7 +53,7 @@ This guide covers how to deploy the Stock Prediction Dashboard locally and to th
    - Adjust technical indicator parameters
    - Change prediction horizons
 
-## ☁️ Cloud Deployment
+## Cloud Deployment
 
 ### Streamlit Cloud (Recommended)
 
@@ -125,7 +125,7 @@ This guide covers how to deploy the Stock Prediction Dashboard locally and to th
    docker run -p 8501:8501 stock-dashboard
    ```
 
-## 🔧 Production Considerations
+## Production Considerations
 
 ### Security
 
@@ -158,7 +158,7 @@ This guide covers how to deploy the Stock Prediction Dashboard locally and to th
    - Add health check endpoints
    - Monitor API response times
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -194,7 +194,7 @@ This guide covers how to deploy the Stock Prediction Dashboard locally and to th
    - Implement data cleanup
    - Use streaming for large datasets
 
-## 📊 Scaling
+## Scaling
 
 ### Horizontal Scaling
 

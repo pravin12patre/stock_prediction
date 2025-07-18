@@ -32,40 +32,40 @@ def test_prediction_accuracy():
         raw_data = data_fetcher.fetch_stock_data(ticker, period)
         
         if raw_data is None or raw_data.empty:
-            print("❌ Failed to fetch data")
+            print("Failed to fetch data")
             return False
         
-        print(f"   ✅ Fetched {len(raw_data)} data points")
+        print(f"   Fetched {len(raw_data)} data points")
         
         # Calculate technical indicators
         print("2. Calculating technical indicators...")
         data_with_indicators = data_fetcher.calculate_technical_indicators(raw_data)
         
         if data_with_indicators is None:
-            print("❌ Failed to calculate technical indicators")
+            print("Failed to calculate technical indicators")
             return False
         
-        print(f"   ✅ Calculated {len(data_with_indicators.columns)} indicators")
+        print(f"   Calculated {len(data_with_indicators.columns)} indicators")
         
         # Prepare features
         print("3. Preparing features...")
         features_data = data_fetcher.prepare_features(data_with_indicators)
         
         if features_data is None:
-            print("❌ Failed to prepare features")
+            print("Failed to prepare features")
             return False
         
-        print(f"   ✅ Prepared {len(features_data.columns)} features")
+        print(f"   Prepared {len(features_data.columns)} features")
         
         # Train models
         print("4. Training advanced models...")
         success = predictor.train_models(features_data)
         
         if not success:
-            print("❌ Failed to train models")
+            print("Failed to train models")
             return False
         
-        print(f"   ✅ Trained models for {len(predictor.models)} horizons")
+        print(f"   Trained models for {len(predictor.models)} horizons")
         
         # Show model performance
         print("\n5. Model Performance:")
@@ -81,7 +81,7 @@ def test_prediction_accuracy():
         predictions = predictor.predict(features_data)
         
         if predictions:
-            print("   ✅ Predictions generated:")
+            print("   Predictions generated:")
             for horizon, pred_data in predictions.items():
                 print(f"     {horizon.upper()}: ${pred_data['predicted_price']:.2f} "
                       f"({pred_data['predicted_change_pct']:+.2f}%)")
@@ -94,7 +94,7 @@ def test_prediction_accuracy():
                 if 'prediction_std' in pred_data:
                     print(f"       Uncertainty: {pred_data['prediction_std']:.4f}")
         else:
-            print("❌ Failed to generate predictions")
+            print("Failed to generate predictions")
             return False
         
         # Show feature importance
@@ -107,11 +107,11 @@ def test_prediction_accuracy():
                 for feature, importance in top_features.items():
                     print(f"     - {feature}: {importance:.4f}")
         
-        print("\n✅ Test completed successfully!")
+        print("\nTest completed successfully!")
         return True
         
     except Exception as e:
-        print(f"❌ Test failed with error: {e}")
+        print(f"Test failed with error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -164,15 +164,15 @@ if __name__ == "__main__":
         print("SUMMARY")
         print("=" * 50)
         print("The improved prediction system includes:")
-        print("✅ Advanced feature engineering with 50+ indicators")
-        print("✅ Multiple ML models with hyperparameter tuning")
-        print("✅ Ensemble methods for better accuracy")
-        print("✅ Intelligent feature selection")
-        print("✅ Time series cross-validation")
-        print("✅ Robust scaling and outlier handling")
-        print("✅ Uncertainty quantification")
-        print("✅ Market regime detection")
-        print("✅ Enhanced confidence calculation")
+        print("Advanced feature engineering with 50+ indicators")
+        print("Multiple ML models with hyperparameter tuning")
+        print("Ensemble methods for better accuracy")
+        print("Intelligent feature selection")
+        print("Time series cross-validation")
+        print("Robust scaling and outlier handling")
+        print("Uncertainty quantification")
+        print("Market regime detection")
+        print("Enhanced confidence calculation")
         print("\nThese improvements should result in more accurate and reliable predictions!")
     else:
-        print("\n❌ Test failed. Please check the error messages above.") 
+        print("\nTest failed. Please check the error messages above.") 

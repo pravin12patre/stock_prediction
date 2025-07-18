@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Stock Prediction Dashboard Launcher
-echo "🚀 Starting Stock Prediction Dashboard..."
+echo "Starting Stock Prediction Dashboard..."
 
 # Check if Python 3 is available
 if command -v python3 &> /dev/null; then
-    echo "✅ Python 3 found"
+    echo "Python 3 found"
 else
-    echo "❌ Python 3 not found. Please install Python 3.8 or higher."
+    echo "Python 3 not found. Please install Python 3.8 or higher."
     exit 1
 fi
 
@@ -15,9 +15,9 @@ fi
 echo "📦 Checking dependencies..."
 python3 -c "import streamlit, yfinance, pandas, numpy, plotly, pandas_ta" 2>/dev/null
 if [ $? -eq 0 ]; then
-    echo "✅ All dependencies are installed"
+    echo "All dependencies are installed"
 else
-    echo "⚠️  Some dependencies missing. Installing..."
+    echo "Some dependencies missing. Installing..."
     pip3 install -r requirements.txt
 fi
 

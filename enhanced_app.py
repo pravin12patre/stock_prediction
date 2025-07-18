@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 
 # Page configuration
 st.set_page_config(
-    page_title="Stock Prediction Dashboard",
+    page_title="Enhanced Stock Prediction Dashboard",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -65,7 +65,7 @@ def initialize_components():
 
 def main():
     # Header
-    st.markdown('<h1 class="main-header">Stock Prediction Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">Enhanced Stock Prediction Dashboard</h1>', unsafe_allow_html=True)
     
     # Initialize components
     components = initialize_components()
@@ -149,7 +149,7 @@ def main():
                             predictions = predictor.predict(data, prediction_horizons)
                             
                             if predictions:
-                                st.markdown("## AI Predictions")
+                                st.markdown("## 🔮 AI Predictions")
                                 
                                 # Display predictions in cards
                                 cols = st.columns(len(predictions))
@@ -196,7 +196,7 @@ def main():
                 
                 # Sentiment Analysis
                 if show_sentiment:
-                    st.markdown("## Sentiment Analysis")
+                    st.markdown("## 📰 Sentiment Analysis")
                     
                     # Placeholder for sentiment analysis
                     st.info("Sentiment analysis features coming soon!")
@@ -297,7 +297,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #666;'>
-        <p>Stock Prediction Dashboard | Powered by Advanced AI Models</p>
+        <p>Enhanced Stock Prediction Dashboard | Powered by Advanced AI Models</p>
         <p>This tool is for educational purposes only. Always do your own research before making investment decisions.</p>
     </div>
     """, unsafe_allow_html=True)

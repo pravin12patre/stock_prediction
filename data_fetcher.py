@@ -324,7 +324,7 @@ class StockDataFetcher:
             if ta is not None:
                 try:
                     macd = ta.macd(df['Close'])
-                    if macd is not None:
+                    if macd is not None and not macd.empty:
                         df = pd.concat([df, macd], axis=1)
                     else:
                         # Create placeholder MACD columns if calculation fails
@@ -339,11 +339,17 @@ class StockDataFetcher:
                     df['MACDs_12_26_9'] = np.nan
             else:
                 # Fallback MACD calculation
-                ema12 = df['Close'].ewm(span=12).mean()
-                ema26 = df['Close'].ewm(span=26).mean()
-                df['MACD_12_26_9'] = ema12 - ema26
-                df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9).mean()
-                df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
+                try:
+                    ema12 = df['Close'].ewm(span=12).mean()
+                    ema26 = df['Close'].ewm(span=26).mean()
+                    df['MACD_12_26_9'] = ema12 - ema26
+                    df['MACDs_12_26_9'] = df['MACD_12_26_9'].ewm(span=9).mean()
+                    df['MACDh_12_26_9'] = df['MACD_12_26_9'] - df['MACDs_12_26_9']
+                except Exception as e:
+                    print(f"Error in fallback MACD calculation: {e}")
+                    df['MACD_12_26_9'] = np.nan
+                    df['MACDh_12_26_9'] = np.nan
+                    df['MACDs_12_26_9'] = np.nan
         else:
             # Create placeholder MACD columns
             df['MACD_12_26_9'] = np.nan
@@ -512,7 +518,15 @@ class StockDataFetcher:
                 
                 # EOM (Ease of Movement)
                 if ta is not None:
-                    df['EOM'] = ta.eom(df['High'], df['Low'], df['Volume'], length=14)
+                    try:
+                        df['EOM'] = ta.eom(df['High'], df['Low'], df['Volume'], length=14)
+                    except Exception as e:
+                        print(f"Error calculating EOM: {e}")
+                        # Fallback EOM calculation
+                        distance_moved = (df['High'] + df['Low']) / 2 - (df['High'].shift(1) + df['Low'].shift(1)) / 2
+                        box_ratio = df['Volume'] / (df['High'] - df['Low'])
+                        df['EOM'] = distance_moved / box_ratio
+                        df['EOM'] = df['EOM'].rolling(window=14).mean()
                 else:
                     # Fallback EOM calculation
                     distance_moved = (df['High'] + df['Low']) / 2 - (df['High'].shift(1) + df['Low'].shift(1)) / 2
